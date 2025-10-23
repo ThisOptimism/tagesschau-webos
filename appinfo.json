@@ -1,0 +1,10 @@
+{
+  "id": "com.tagesschau.app",
+  "version": "1.0.0",
+  "vendor": "My Company",
+  "type": "web",
+  "main": "index.html",
+  "title": "tagesschau",
+  "icon": "icon.jpg",
+  "largeIcon": "largeIcon.jpg"
+}

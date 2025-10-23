@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="de">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Tagesschau Video</title>
+        <style>
+            body {
+                background-color: #000;
+                color: #fff;
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+            }
+
+            button {
+                background: #004080;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                cursor: pointer;
+                position: absolute;
+                top: 20px;
+                left: 20px;
+                z-index: 10;
+            }
+
+            #videoContainer {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: black;
+                z-index: 5;
+            }
+
+            video {
+                width: 100%;
+                height: 100%;
+                background: black;
+                object-fit: cover;
+            }
+
+            #info {
+                position: absolute;
+                bottom: 40px;
+                left: 40px;
+                z-index: 10;
+                background: rgba(0, 0, 0, 0.5);
+                padding: 10px 20px;
+                border-radius: 10px;
+                max-width: 80%;
+            }
+
+            #overlay {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                color: #fff;
+                font-size: 2rem;
+                background: rgba(0, 0, 0, 0.6);
+                padding: 20px 40px;
+                border-radius: 10px;
+                display: none;
+                z-index: 20;
+                transition: opacity 0.3s ease;
+            }
+
+            h1 {
+                font-size: 1.4rem;
+                margin: 0 0 10px 0;
+            }
+
+            p {
+                margin: 0;
+                line-height: 1.4;
+                font-size: 1rem;
+                color: #ddd;
+            }
+
+            #loading {
+                color: #999;
+                font-style: italic;
+                text-align: center;
+                margin-top: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <button onclick="history.back()">← Zurück</button>
+        <div id="videoContainer">
+            <p id="loading">Lade Video...</p>
+        </div>
+        <div id="info"></div>
+        <div id="overlay"></div>
+
+        <script>
+            var video = null;
+            var isPaused = false;
+            var overlayTimer = null;
+
+            function showOverlay(text) {
+                var overlay = document.getElementById("overlay");
+                overlay.innerHTML = text;
+                overlay.style.display = "block";
+                overlay.style.opacity = "1";
+                if (overlayTimer) clearTimeout(overlayTimer);
+                overlayTimer = setTimeout(function () {
+                    overlay.style.opacity = "0";
+                    setTimeout(function () {
+                        overlay.style.display = "none";
+                    }, 300);
+                }, 1000);
+            }
+
+            function getQueryParam(param) {
+                var query = window.location.search.substring(1);
+                var vars = query.split("&");
+                for (var i = 0; i < vars.length; i++) {
+                    var pair = vars[i].split("=");
+                    if (decodeURIComponent(pair[0]) === param) {
+                        return decodeURIComponent(pair[1]);
+                    }
+                }
+                return null;
+            }
+
+            function loadVideo() {
+                var stream = getQueryParam("stream");
+                var title = getQueryParam("title");
+                var poster = getQueryParam("poster");
+                if (stream) {
+                    document.getElementById("info").innerHTML =
+                        "<h1>" + (title || "Livestream") + "</h1>";
+                    playHTML5Video(stream, poster);
+                    return;
+                }
+
+                var id = getQueryParam("id");
+                if (!id) {
+                    document.getElementById("loading").innerHTML =
+                        "Kein Video gefunden.";
+                    return;
+                }
+
+                var apiUrl = "https://www.tagesschau.de/api2u/" + id + ".json";
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", apiUrl, true);
+                xhr.onload = function () {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        var data = JSON.parse(xhr.responseText);
+                        renderVideo(data);
+                    } else {
+                        document.getElementById("loading").innerHTML =
+                            "Fehler beim Laden des Videos.";
+                    }
+                };
+                xhr.onerror = function () {
+                    document.getElementById("loading").innerHTML =
+                        "Netzwerkfehler beim Laden.";
+                };
+                xhr.send();
+            }
+
+            function renderVideo(data) {
+                var poster = null;
+                if (
+                    data.teaserImage &&
+                    data.teaserImage.imageVariants &&
+                    data.teaserImage.imageVariants["16x9-640"]
+                ) {
+                    poster = data.teaserImage.imageVariants["16x9-640"];
+                }
+
+                var title = data.title || "Tagesschau Video";
+                var description =
+                    data.topline ||
+                    (data.tags && data.tags.length ? data.tags[0].tag : "");
+
+                var streamUrl = null;
+
+                if (data.streams) {
+                    if (data.streams.adaptivestreaming)
+                        streamUrl = data.streams.adaptivestreaming;
+                    else if (data.streams.h264xl)
+                        streamUrl = data.streams.h264xl;
+                    else if (data.streams.h264m) streamUrl = data.streams.h264m;
+                    else if (data.streams.h264s) streamUrl = data.streams.h264s;
+                }
+
+                if (!streamUrl) {
+                    document.getElementById("loading").innerHTML =
+                        "Kein Videostream gefunden.";
+                    return;
+                }
+
+                document.getElementById("info").innerHTML =
+                    "<h1>" + title + "</h1><p>" + description + "</p>";
+
+                playHTML5Video(streamUrl, poster);
+            }
+
+            function playHTML5Video(url, poster) {
+                var container = document.getElementById("videoContainer");
+                container.innerHTML =
+                    '<video id="html5player" controls autoplay poster="' +
+                    (poster || "") +
+                    '"></video>';
+                video = document.getElementById("html5player");
+                video.src = url;
+                video.autoplay = true;
+                video.volume = 1.0;
+
+                if (!video.canPlayType("application/vnd.apple.mpegurl")) {
+                    var script = document.createElement("script");
+                    script.src = "https://cdn.jsdelivr.net/npm/hls.js@latest";
+                    script.onload = function () {
+                        if (window.Hls && Hls.isSupported()) {
+                            var hls = new Hls();
+                            hls.loadSource(url);
+                            hls.attachMedia(video);
+                            hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                                video.play();
+                            });
+                        }
+                    };
+                    document.body.appendChild(script);
+                }
+
+                video.addEventListener("loadedmetadata", function () {
+                    if (video.requestFullscreen) video.requestFullscreen();
+                    else if (video.webkitRequestFullscreen)
+                        video.webkitRequestFullscreen();
+                });
+            }
+
+            document.addEventListener("keydown", function (e) {
+                if (!video) return;
+                var code = e.keyCode;
+
+                switch (code) {
+                    case 415:
+                        video.play();
+                        isPaused = false;
+                        showOverlay("▶️ Play");
+                        break;
+                    case 19:
+                        video.pause();
+                        isPaused = true;
+                        showOverlay("⏸ Pause");
+                        break;
+                    case 13:
+                        if (isPaused) {
+                            video.play();
+                            isPaused = false;
+                            showOverlay("▶️ Play");
+                        } else {
+                            video.pause();
+                            isPaused = true;
+                            showOverlay("⏸ Pause");
+                        }
+                        break;
+                    case 37:
+                    case 412:
+                        seekRelative(-10, "⏪ -10s");
+                        break;
+                    case 39:
+                    case 417:
+                        seekRelative(10, "⏩ +10s");
+                        break;
+                    case 413:
+                    case 461:
+                    case 27:
+                        history.back();
+                        break;
+                }
+            });
+
+            function seekRelative(seconds, label) {
+                if (!video || video.readyState < 1) return;
+                var newTime = video.currentTime + seconds;
+                if (newTime < 0) newTime = 0;
+                if (newTime > video.duration) newTime = video.duration;
+                video.currentTime = newTime;
+                showOverlay(label);
+            }
+
+            loadVideo();
+        </script>
+    </body>
+</html>

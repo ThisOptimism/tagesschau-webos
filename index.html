@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="de">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Tagesschau</title>
+        <style>
+            body {
+                background-color: #0b1833;
+                color: white;
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 20px;
+                overflow-x: hidden;
+            }
+
+            h1 {
+                color: #ffffff;
+                font-size: 1.6rem;
+                margin-bottom: 20px;
+            }
+
+            .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+                gap: 20px;
+            }
+
+            .card {
+                position: relative;
+                background: #101c3d;
+                border-radius: 10px;
+                overflow: hidden;
+                cursor: pointer;
+                transition:
+                    transform 0.2s ease,
+                    box-shadow 0.2s ease;
+            }
+
+            .card img {
+                width: 100%;
+                height: 150px;
+                object-fit: cover;
+            }
+
+            .card-title {
+                padding: 10px;
+                font-size: 1rem;
+                font-weight: bold;
+                text-align: center;
+            }
+
+            .card:focus {
+                outline: 3px solid #1e90ff;
+                transform: scale(1.05);
+                box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            }
+
+            #loading {
+                text-align: center;
+                margin-top: 40px;
+                color: #bbb;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Tagesschau Mediathek</h1>
+        <div id="grid" class="grid"></div>
+        <p id="loading">Lade Inhalte...</p>
+
+        <script>
+            var grid = document.getElementById("grid");
+            var cards = [];
+            var currentFocus = 0;
+
+            function loadChannels() {
+                var xhr = new XMLHttpRequest();
+                xhr.open(
+                    "GET",
+                    "https://www.tagesschau.de/api2u/channels/",
+                    true,
+                );
+                xhr.onload = function () {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        var data = JSON.parse(xhr.responseText);
+                        renderChannels(data.channels);
+                    } else {
+                        document.getElementById("loading").innerHTML =
+                            "Fehler beim Laden der Kanäle.";
+                    }
+                };
+                xhr.onerror = function () {
+                    document.getElementById("loading").innerHTML =
+                        "Netzwerkfehler beim Laden der Kanäle.";
+                };
+                xhr.send();
+            }
+
+            function renderChannels(channels) {
+                document.getElementById("loading").style.display = "none";
+                grid.innerHTML = "";
+                cards = [];
+
+                for (var i = 0; i < channels.length; i++) {
+                    var ch = channels[i];
+                    var img = "";
+                    if (
+                        ch.teaserImage &&
+                        ch.teaserImage.imageVariants &&
+                        ch.teaserImage.imageVariants["16x9-512"]
+                    ) {
+                        img = ch.teaserImage.imageVariants["16x9-512"];
+                    }
+
+                    var card = document.createElement("div");
+                    card.className = "card";
+                    card.tabIndex = -1;
+                    card.dataset.index = i;
+                    card.innerHTML =
+                        '<img src="' +
+                        (img || "") +
+                        '" alt="">' +
+                        '<div class="card-title">' +
+                        ch.title +
+                        "</div>";
+
+                    (function (channel) {
+                        card.onclick = function () {
+                            openChannel(channel);
+                        };
+                    })(ch);
+
+                    grid.appendChild(card);
+                    cards.push({ element: card, channel: ch });
+                }
+
+                if (cards.length > 0) {
+                    currentFocus = 0;
+                    focusCard(0);
+                }
+            }
+
+            function openChannel(channel) {
+                // Livestream: open directly with ?stream=
+                if (channel.streams && channel.streams.adaptivestreaming) {
+                    var stream = encodeURIComponent(
+                        channel.streams.adaptivestreaming,
+                    );
+                    var title = encodeURIComponent(
+                        channel.title || "Livestream",
+                    );
+                    var poster = "";
+
+                    if (
+                        channel.teaserImage &&
+                        channel.teaserImage.imageVariants &&
+                        channel.teaserImage.imageVariants["16x9-960"]
+                    ) {
+                        poster = encodeURIComponent(
+                            channel.teaserImage.imageVariants["16x9-960"],
+                        );
+                    }
+
+                    window.location.href =
+                        "details.html?stream=" +
+                        stream +
+                        "&title=" +
+                        title +
+                        "&poster=" +
+                        poster;
+                } else {
+                    // Normal VOD
+                    var id = channel.sophoraId || channel.externalId;
+                    window.location.href =
+                        "details.html?id=" + encodeURIComponent(id);
+                }
+            }
+
+            function focusCard(index) {
+                if (cards.length === 0) return;
+                for (var i = 0; i < cards.length; i++) {
+                    cards[i].element.tabIndex = -1;
+                }
+                var el = cards[index].element;
+                el.tabIndex = 0;
+                el.focus();
+                currentFocus = index;
+            }
+
+            // --- Remote / keyboard navigation ---
+            document.addEventListener("keydown", function (e) {
+                if (cards.length === 0) return;
+
+                var key = e.keyCode;
+                var cols = Math.floor(
+                    grid.offsetWidth / (cards[0].element.offsetWidth + 20),
+                );
+
+                switch (key) {
+                    case 37: // left
+                        if (currentFocus > 0) focusCard(currentFocus - 1);
+                        break;
+                    case 39: // right
+                        if (currentFocus < cards.length - 1)
+                            focusCard(currentFocus + 1);
+                        break;
+                    case 38: // up
+                        if (currentFocus - cols >= 0)
+                            focusCard(currentFocus - cols);
+                        break;
+                    case 40: // down
+                        if (currentFocus + cols < cards.length)
+                            focusCard(currentFocus + cols);
+                        break;
+                    case 13: // OK
+                        openChannel(cards[currentFocus].channel);
+                        break;
+                }
+            });
+
+            loadChannels();
+        </script>
+    </body>
+</html>
