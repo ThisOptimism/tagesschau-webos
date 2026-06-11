@@ -141,7 +141,6 @@ If a livestream does not start, check the console or use a different browser.
 
 ## Author
 
-Developed by Steffen Leppin
 Built for the WebOS community.
 
 ---
